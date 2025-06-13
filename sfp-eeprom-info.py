@@ -739,6 +739,10 @@ def sfp_eeprom_input() -> None:
             input_raw = input_fd.read()
 
     input_raw = input_raw.strip()
+    input_offset = input_raw.find("@")
+    if input_offset > 0:
+        input_raw = input_raw[input_offset:]
+
     EEPROM_INPUT_STR = input_raw
     _LOGGER.warning("*** Input ***")
     _LOGGER.warning(input_raw)
@@ -784,6 +788,8 @@ def sfp_eeprom_output() -> None:
         return
 
     sfp_eeprom_dump("output")
+
+    b64_str = "begin-base64 644 sfp_a2_info " + b64_str
 
     _LOGGER.warning("")
     _LOGGER.warning("*** Output ***")
