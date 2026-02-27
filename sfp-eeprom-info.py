@@ -96,7 +96,7 @@ def str_to_bytes(
     if data_len < str_len:
         data_bytes = data_bytes + bytearray(str_len - data_len)
     if data_len > str_len:
-        data_bytes = gpon_ploam[: str_len + 1]
+        data_bytes = data_bytes[: str_len + 1]
 
     return data_bytes
 
