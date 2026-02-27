@@ -124,6 +124,15 @@ class GponAuth(IntEnum):
     PLOAM = 0x02
 
 
+def eeprom_crc(value: bytearray) -> int:
+    csum = 0
+
+    for cur_byte in value:
+        csum += cur_byte
+
+    return csum & 0xFF
+
+
 def eeprom_to_dbm(value: int) -> int:
     return int(round(10 * log10(value / EEPROM_MWATTS_CONV), 0))
 
@@ -541,6 +550,10 @@ class EEPROM1:
         self.voltage_offset_cal = bytes_to_u16(hex[90:92])
         self.reserved_2 = hex[92:95]
         self.cc_dmi = bytes_to_u8(hex[95:96])
+        cc_dmi = eeprom_crc(hex[0:95])
+        if cc_dmi != self.cc_dmi:
+            _LOGGER.error("Invalid EEPROM1 CC_dmi: %02x (calc=%02x)", self.cc_dmi, cc_dmi)
+
         self.temperature_msb = bytes_to_u8(hex[96:97])
         self.temperature_lsb = bytes_to_u8(hex[97:98])
         self.vcc_msb = bytes_to_u8(hex[98:99])
@@ -611,6 +624,7 @@ class EEPROM1:
         hex += u16_to_bytes(self.voltage_slope_cal)
         hex += u16_to_bytes(self.voltage_offset_cal)
         hex += self.reserved_2
+        self.cc_dmi = eeprom_crc(hex[0:95])
         hex += u8_to_bytes(self.cc_dmi)
         hex += u8_to_bytes(self.temperature_msb)
         hex += u8_to_bytes(self.temperature_lsb)
