@@ -70,6 +70,7 @@ class StringType(IntEnum):
     NONE = 0
     SERIAL = 1
     MAC_ADDRESS = 2
+    VENDOR = 3
 
 
 def str_to_bytes(
@@ -88,6 +89,10 @@ def str_to_bytes(
             manufacturer = data_str[:4].encode()
             serial_number = binascii.unhexlify(data_str[4:])
             data_bytes = manufacturer + serial_number
+        elif str_type == StringType.VENDOR:
+            data_bytes = data_str.encode()
+            while len(data_bytes) < str_len:
+                data_bytes += b" "
         else:
             data_bytes = data_str.encode()
 
@@ -112,6 +117,8 @@ GPON_MAC_LEN: Final[int] = 6
 GPON_PLOAM_LEN: Final[int] = GPON_LOID_LEN
 GPON_SERIAL_LEN: Final[int] = 8
 GPON_VENDOR_ID_LEN: Final[int] = 4
+VENDOR_NAME_LEN: Final[int] = 16
+VENDOR_PN_LEN: Final[int] = 16
 
 
 EEPROM_MWATTS_CONV: Final[int] = 10000
@@ -173,6 +180,29 @@ def eeprom_to_mamps(value: int) -> float:
     return value / EEPROM_MAMPS_CONV
 
 
+def eeprom_to_vendor(value: bytearray) -> str:
+    nonprint = False
+    offset = 0
+    value_str = ""
+    for cur_byte in value:
+        cur_value = value[offset : offset + 1]
+        if cur_byte >= 0x20 or cur_byte < 0x7F:
+            value_str += cur_value.decode()
+        else:
+            nonprint = True
+            break
+        offset += 1
+
+    if offset > 0:
+        if nonprint:
+            value_str = value_str + " + " + eeprom_to_hex(value[offset:])
+        else:
+            value_str = value_str
+        return value_str
+
+    return eeprom_to_hex(value)
+
+
 def eeprom_to_serial_number(value: bytearray) -> str:
     manufacturer = value[:4]
     serial_number = value[4:]
@@ -226,7 +256,35 @@ class EEPROM0:
     """Huawei MA5671a EEPROM0 layout."""
 
     identifier: int
-    # TODO
+    ext_identifier: int
+    connector: int
+    transceiver: bytearray
+    encoding: int
+    signaling_rate: int
+    rate_id: int
+    length_smf_km: int
+    length_smf_m: int
+    length_om2: int
+    length_om1: int
+    length_copper: int
+    length_om3: int
+    transceiver_2: int
+    vendor_oui: bytearray
+    vendor_pn: bytearray
+    vendor_rev: bytearray
+    wavelength: int
+    fibre_speed_2: int
+    cc_base: int
+    options: int
+    signaling_rate_max: int
+    signaling_rate_min: int
+    vendor_sn: bytearray
+    date_code: bytearray
+    diag_monitor_type: int
+    enhanced_options: int
+    sff_8472_compliance: int
+    cc_ext: int
+    vendor_data: bytearray
     reserved_1: bytearray
     reserved_2: bytearray
 
@@ -237,8 +295,37 @@ class EEPROM0:
     def data(self) -> dict[str, Any]:
         """Get EEPROM data."""
         _data: dict[str, Any] = {
-            "identifier": self.identifier,
-            # TODO
+            "identifier": eeprom_to_u8(self.identifier),
+            "ext-identifier": eeprom_to_u8(self.ext_identifier),
+            "connector": eeprom_to_u8(self.connector),
+            "transceiver": eeprom_to_hex(self.transceiver),
+            "encoding": eeprom_to_u8(self.encoding),
+            "signaling-rate": eeprom_to_u8(self.signaling_rate),
+            "rate-id": eeprom_to_u8(self.rate_id),
+            "length-smf-km": eeprom_to_u8(self.length_smf_km),
+            "length-smf-m": eeprom_to_u8(self.length_smf_m),
+            "length-om2": eeprom_to_u8(self.length_om2),
+            "length-om1": eeprom_to_u8(self.length_om1),
+            "length-copper": eeprom_to_u8(self.length_copper),
+            "length-om3": eeprom_to_u8(self.length_om3),
+            "vendor-name": eeprom_to_vendor(self.vendor_name),
+            "transceiver-2": eeprom_to_u8(self.transceiver_2),
+            "vendor-oui": eeprom_to_hex(self.vendor_oui),
+            "vendor-pn": eeprom_to_vendor(self.vendor_pn),
+            "vendor-rev": eeprom_to_vendor(self.vendor_rev),
+            "wavelength": eeprom_to_u16(self.wavelength),
+            "fibre-speed-2": eeprom_to_u8(self.fibre_speed_2),
+            "cc-base": eeprom_to_u8(self.cc_base),
+            "options": eeprom_to_u16(self.options),
+            "signaling-rate-max": eeprom_to_u8(self.signaling_rate_max),
+            "signaling-rate-min": eeprom_to_u8(self.signaling_rate_min),
+            "vendor-sn": eeprom_to_vendor(self.vendor_sn),
+            "date-code": eeprom_to_vendor(self.date_code),
+            "diag-monitor-type": eeprom_to_u8(self.diag_monitor_type),
+            "enhanced-options": eeprom_to_u8(self.enhanced_options),
+            "sff-8472-compliance": eeprom_to_u8(self.sff_8472_compliance),
+            "cc-ext": eeprom_to_u8(self.cc_ext),
+            "vendor-data": eeprom_to_vendor(self.vendor_data),
             "reserved-1": eeprom_to_hex(self.reserved_1),
             "reserved-2": eeprom_to_hex(self.reserved_2),
         }
@@ -247,20 +334,119 @@ class EEPROM0:
     def default_values(self):
         """Set EEPROM default values."""
         self.identifier = 0x3
-        # TODO
+        self.ext_identifier = 0x4
+        self.connector = 0x1
+        self.transceiver = bytearray(8)
+        self.encoding = 0x3
+        self.signaling_rate = 0xC
+        self.rate_id = 0x0
+        self.length_smf_km = 0x14
+        self.length_smf_m = 0xC8
+        self.length_om2 = 0x0
+        self.length_om1 = 0x0
+        self.length_copper = 0x0
+        self.length_om3 = 0x0
+        self.vendor_name = bytearray(16)
+        self.transceiver_2 = 0x0
+        self.vendor_oui = bytearray(3)
+        self.vendor_pn = bytearray(16)
+        self.vendor_rev = bytearray(4)
+        self.wavelength = 0x051E
+        self.fibre_speed_2 = 0x0
+        self.cc_base = 0x0
+        self.options = 0x001A
+        self.signaling_rate_max = 0x0
+        self.signaling_rate_min = 0x0
+        self.vendor_sn = bytearray(16)
+        self.date_code = bytearray(8)
+        self.diag_monitor_type = 0x68
+        self.enhanced_options = 0xE0
+        self.sff_8472_compliance = 0x03
+        self.cc_ext = 0x0
+        self.vendor_data = bytearray(32)
         self.reserved_1 = bytearray(128)
         self.reserved_2 = bytearray(384)
 
     def hex_import(self, hex: bytearray) -> None:
         self.identifier = bytes_to_u8(hex[0:1])
-        # TODO
+        self.ext_identifier = bytes_to_u8(hex[1:2])
+        self.connector = bytes_to_u8(hex[2:3])
+        self.transceiver = hex[3:11]
+        self.encoding = bytes_to_u8(hex[11:12])
+        self.signaling_rate = bytes_to_u8(hex[12:13])
+        self.rate_id = bytes_to_u8(hex[13:14])
+        self.length_smf_km = bytes_to_u8(hex[14:15])
+        self.length_smf_m = bytes_to_u8(hex[15:16])
+        self.length_om2 = bytes_to_u8(hex[16:17])
+        self.length_om1 = bytes_to_u8(hex[17:18])
+        self.length_copper = bytes_to_u8(hex[18:19])
+        self.length_om3 = bytes_to_u8(hex[19:20])
+        self.vendor_name = hex[20:36]
+        self.transceiver_2 = bytes_to_u8(hex[36:37])
+        self.vendor_oui = hex[37:40]
+        self.vendor_pn = hex[40:56]
+        self.vendor_rev = hex[56:60]
+        self.wavelength = bytes_to_u16(hex[60:62])
+        self.fibre_speed_2 = bytes_to_u8(hex[62:63])
+        self.cc_base = bytes_to_u8(hex[63:64])
+
+        cc_base = eeprom_crc(hex[0:63])
+        if cc_base != self.cc_base:
+            _LOGGER.error("Invalid EEPROM0 cc_base: %02x (calc=%02x)", self.cc_base, cc_base)
+
+        self.options = bytes_to_u16(hex[64:66])
+        self.signaling_rate_max = bytes_to_u8(hex[66:67])
+        self.signaling_rate_min = bytes_to_u8(hex[67:68])
+        self.vendor_sn = hex[68:84]
+        self.date_code = hex[84:92]
+        self.diag_monitor_type = bytes_to_u8(hex[92:93])
+        self.enhanced_options = bytes_to_u8(hex[93:94])
+        self.sff_8472_compliance = bytes_to_u8(hex[94:95])
+        self.cc_ext = bytes_to_u8(hex[95:96])
+
+        cc_ext = eeprom_crc(hex[64:95])
+        if cc_ext != self.cc_ext:
+            _LOGGER.error("Invalid EEPROM0 cc_ext: %02x (calc=%02x)", self.cc_ext, cc_ext)
+
+        self.vendor_data = hex[96:128]
         self.reserved_1 = hex[128:256]
         self.reserved_2 = hex[256:640]
 
     def hex_export(self) -> bytearray:
         hex = bytearray()
         hex += u8_to_bytes(self.identifier)
-        # TODO
+        hex += u8_to_bytes(self.ext_identifier)
+        hex += u8_to_bytes(self.connector)
+        hex += self.transceiver
+        hex += u8_to_bytes(self.encoding)
+        hex += u8_to_bytes(self.signaling_rate)
+        hex += u8_to_bytes(self.rate_id)
+        hex += u8_to_bytes(self.length_smf_km)
+        hex += u8_to_bytes(self.length_smf_m)
+        hex += u8_to_bytes(self.length_om2)
+        hex += u8_to_bytes(self.length_om1)
+        hex += u8_to_bytes(self.length_copper)
+        hex += u8_to_bytes(self.length_om3)
+        hex += self.vendor_name
+        hex += u8_to_bytes(self.transceiver_2)
+        hex += self.vendor_oui
+        hex += self.vendor_pn
+        hex += self.vendor_rev
+        hex += u16_to_bytes(self.wavelength)
+        hex += u8_to_bytes(self.fibre_speed_2)
+        self.cc_base = eeprom_crc(hex[0:63])
+        hex += u8_to_bytes(self.cc_base)
+        hex += u16_to_bytes(self.options)
+        hex += u8_to_bytes(self.signaling_rate_max)
+        hex += u8_to_bytes(self.signaling_rate_min)
+        hex += self.vendor_sn
+        hex += self.date_code
+        hex += u8_to_bytes(self.diag_monitor_type)
+        hex += u8_to_bytes(self.enhanced_options)
+        hex += u8_to_bytes(self.sff_8472_compliance)
+        self.cc_ext = eeprom_crc(hex[64:95])
+        hex += u8_to_bytes(self.cc_ext)
+        hex += self.vendor_data
         hex += self.reserved_1
         hex += self.reserved_2
         return hex
@@ -287,6 +473,16 @@ class EEPROM0:
         res += B64_LINE_SEP_BYTES
 
         return res
+
+    def set_vendor_name(self, vendor_name_str: str) -> None:
+        vendor_name = str_to_bytes(vendor_name_str, VENDOR_NAME_LEN, StringType.VENDOR)
+
+        self.vendor_name = vendor_name
+
+    def set_vendor_pn(self, vendor_pn_str: str) -> None:
+        vendor_pn = str_to_bytes(vendor_pn_str, VENDOR_PN_LEN, StringType.VENDOR)
+
+        self.vendor_pn = vendor_pn
 
 
 class EEPROM1:
@@ -550,6 +746,7 @@ class EEPROM1:
         self.voltage_offset_cal = bytes_to_u16(hex[90:92])
         self.reserved_2 = hex[92:95]
         self.cc_dmi = bytes_to_u8(hex[95:96])
+
         cc_dmi = eeprom_crc(hex[0:95])
         if cc_dmi != self.cc_dmi:
             _LOGGER.error("Invalid EEPROM1 CC_dmi: %02x (calc=%02x)", self.cc_dmi, cc_dmi)
@@ -691,9 +888,9 @@ class EEPROM1:
         gpon_loid = str_to_bytes(gpon_loid_str, GPON_LOID_LEN)
         gpon_lpwd = str_to_bytes(gpon_lpwd_str, GPON_LPWD_LEN)
 
-        self.gpon_loid_ploam = gpon_ploam
-        self.gpon_lpwd = bytearray(GPON_LPWD_LEN)
-        self.gpon_loid_ploam_switch = bytearray([GponAuth.PLOAM])
+        self.gpon_loid_ploam = gpon_loid
+        self.gpon_lpwd = gpon_lpwd
+        self.gpon_loid_ploam_switch = bytearray([GponAuth.LOID])
 
     def set_gpon_ploam(self, gpon_ploam_str: str) -> None:
         gpon_ploam = str_to_bytes(gpon_ploam_str, GPON_PLOAM_LEN)
@@ -803,7 +1000,12 @@ def sfp_eeprom_output() -> None:
 
     sfp_eeprom_dump("output")
 
-    b64_str = "begin-base64 644 sfp_a2_info " + b64_str
+    if isinstance(EEPROM, EEPROM0):
+        sfp_str = "sfp_a0_low_128"
+    elif isinstance(EEPROM, EEPROM1):
+        sfp_str = "sfp_a2_info"
+
+    b64_str = "begin-base64 644 " + sfp_str + " " + b64_str
 
     _LOGGER.warning("")
     _LOGGER.warning("*** Output ***")
@@ -818,22 +1020,30 @@ def sfp_eeprom_output() -> None:
 def sfp_eeprom_update() -> None:
     """SFP EEPROM update."""
 
-    if OPT_OPTS.gpon_equipment_id is not None:
-        EEPROM.set_gpon_equipment_id(OPT_OPTS.gpon_equipment_id)
+    if isinstance(EEPROM, EEPROM0):
+        if OPT_OPTS.vendor_name is not None:
+            EEPROM.set_vendor_name(OPT_OPTS.vendor_name)
 
-    if OPT_OPTS.gpon_ploam is not None:
-        EEPROM.set_gpon_ploam(OPT_OPTS.gpon_ploam)
-    elif OPT_OPTS.gpon_loid is not None:
-        EEPROM.set_gpon_loid(OPT_OPTS.gpon_loid, OPT_OPTS.gpon_lpwd)
+        if OPT_OPTS.vendor_pn is not None:
+            EEPROM.set_vendor_pn(OPT_OPTS.vendor_pn)
 
-    if OPT_OPTS.gpon_serial is not None:
-        EEPROM.set_gpon_serial(OPT_OPTS.gpon_serial)
+    if isinstance(EEPROM, EEPROM1):
+        if OPT_OPTS.gpon_equipment_id is not None:
+            EEPROM.set_gpon_equipment_id(OPT_OPTS.gpon_equipment_id)
 
-    if OPT_OPTS.gpon_vendor_id is not None:
-        EEPROM.set_gpon_vendor_id(OPT_OPTS.gpon_vendor_id)
+        if OPT_OPTS.gpon_ploam is not None:
+            EEPROM.set_gpon_ploam(OPT_OPTS.gpon_ploam)
+        elif OPT_OPTS.gpon_loid is not None:
+            EEPROM.set_gpon_loid(OPT_OPTS.gpon_loid, OPT_OPTS.gpon_lpwd)
 
-    if OPT_OPTS.mac_address is not None:
-        EEPROM.set_mac_address(OPT_OPTS.mac_address)
+        if OPT_OPTS.gpon_serial is not None:
+            EEPROM.set_gpon_serial(OPT_OPTS.gpon_serial)
+
+        if OPT_OPTS.gpon_vendor_id is not None:
+            EEPROM.set_gpon_vendor_id(OPT_OPTS.gpon_vendor_id)
+
+        if OPT_OPTS.mac_address is not None:
+            EEPROM.set_mac_address(OPT_OPTS.mac_address)
 
 
 def main() -> None:
@@ -846,6 +1056,11 @@ def main() -> None:
     parser.add_option("-i", "--input")
     parser.add_option("-o", "--output")
 
+    # EEPROM 0
+    parser.add_option("--vendor-name")
+    parser.add_option("--vendor-pn")
+
+    # EEPROM 1
     parser.add_option("--gpon-equipment-id")
     parser.add_option("--gpon-loid")
     parser.add_option("--gpon-lpwd")
@@ -856,7 +1071,7 @@ def main() -> None:
 
     OPT_OPTS, OPT_ARGS = parser.parse_args()
 
-    if OPT_OPTS.eeprom == 1:
+    if int(OPT_OPTS.eeprom) == 1:
         EEPROM = EEPROM1()
     else:
         EEPROM = EEPROM0()
